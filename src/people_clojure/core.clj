@@ -2,10 +2,12 @@
   (:require [clojure.string :as str]
             [clojure.walk :as walk]
             [compojure.core :as c]
-            [ring.adapter.jetty :as j])
+            [ring.adapter.jetty :as j]
+            [ring.middleware.params :as p]
+            [hiccup.core :as h])
   (:gen-class))
 
-(defn read-people []
+(defn read-people [country]
   (let [people (slurp "people.csv")
         people (str/split-lines people)
         people (map (fn [line]
@@ -18,15 +20,39 @@
                     people)
         people (walk/keywordize-keys people)
         people (filter (fn [line]
-                         (= (:country line) "Brazil"))
+                         (= (:country line) country))
                        people)]
     ;(spit "filtered_people.edn" (pr-str people))
    people))
 
+(defn countries-html [people]
+  (let [all-countires (map :country people)
+        unique-countries (set all-countries)
+        sorted-countries (sort unique-countries)]
+    [:div
+     (map (fn [country]
+           [:span
+            [:a {:href (str "/?country=" country)} country]
+            " "])
+       sorted-countries)]))
+
+(defn people-html [people]
+  [:ol
+   (map (fn [person]
+          [:li (str (:first_name person) " " (:last_name person))])
+        people)])
+
 (c/defroutes app
   (c/GET "/" request
-    "Hello, world"))
+    (let [params (:params request)
+          country (get params "country")
+          country (or country "Brazil")
+          people (read-people country)]
+     (h/html [:html 
+              [:body 
+               (countries-html people)
+               (people-html people)]]))))
 
 (defn -main []
-  (j/run-jetty app {:port 3000}))
+  (j/run-jetty (p/wrap-params app) {:port 3000}))
   
